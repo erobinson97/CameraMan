@@ -22,10 +22,9 @@ def drawBox(img, bbox):
 
 cap = cv2.VideoCapture(0)
 faulthandler.enable()
-track = cv2.TrackerMOSSE_create()
-
-# Depreciated module
-# tracker = cv2.TrackerMOSSE_create()
+# Quick and dirty tracker
+# track = cv2.TrackerMOSSE_create()
+track = cv2.TrackerCSRT_create()
 
 cv2.namedWindow("Tracking", cv2.WINDOW_GUI_NORMAL)
 
