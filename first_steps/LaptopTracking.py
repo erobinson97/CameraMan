@@ -1,18 +1,32 @@
 # Created by Ethan Robinson
 # Created on October 5th, 2020
-# 
+#
 # This is some test code that tracks an object using my laptop webcam.
 #
 # Coded using OpenCV 4.4.0
 
 import cv2
+# import pdb; pdb.set_trace()
+import faulthandler
+
+
+def drawBox(img, bbox):
+    x = int(bbox[0])
+    y = int(bbox[1])
+    w = int(bbox[2])
+    h = int(bbox[3])
+    cv2.rectangle(img, (x, y), ((x+w), (y+h)), (255, 0, 255), 3, 1)
+    cv2.putText(img, "Tracking!", (75, 75),
+                cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 255, 0), 2)
+
 
 cap = cv2.VideoCapture(0)
+faulthandler.enable()
+track = cv2.TrackerMOSSE_create()
 
 # Depreciated module
 # tracker = cv2.TrackerMOSSE_create()
 
-tracker = cv2.TrackerMOSSE()
 cv2.namedWindow("Tracking", cv2.WINDOW_GUI_NORMAL)
 
 # This grabbs the first frame
@@ -23,25 +37,29 @@ if(grabbed):
 
     # Lets the user draw a box on the window
     bbox = cv2.selectROI("Tracking", frame1, False)
-    cv2.Tracker(frame1, bbox)
+    track.init(frame1, bbox)
+
 
 # Starts the while loop if the first frame was captured
 while grabbed:
-    timer = cv2.getTickCount()
 
     # Grabs, decodes and returns the next video frame. Frame is stored in 'img'
     success, img = cap.read()
+    cv2.imshow("Tracking", img)
 
-    # Calculates fps
-    fps = cv2.getTickFrequency()/(cv2.getTickCount() - timer)
-    # Puts the fps on the captured frame
-    cv2.putText(img, str(fps), (75, 50), cv2.FONT_HERSHEY_COMPLEX, 0.7, (0,0,225),2)
+    success, bbox = track.update(img)
+
+    if success:
+        drawBox(img, bbox)
+    else:
+        cv2.putText(img, "OBJECT_LOST!", (75, 75),
+                    cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 0, 225), 2)
 
     # Create a window and show the captured image
     cv2.imshow("Tracking", img)
 
     # Press 'Q' to exit the window
-    if cv2.waitKey(1) & 0xff ==ord('q'):
+    if cv2.waitKey(1) & 0xff == ord('q'):
         break
 
 cap.release()
