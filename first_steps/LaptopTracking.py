@@ -1,3 +1,10 @@
+# Created by Ethan Robinson
+# Created on October 5th, 2020
+# 
+# This is some test code that tracks an object using my laptop webcam.
+#
+# Coded using OpenCV 4.4.0
+
 import cv2
 
 cap = cv2.VideoCapture(0)
