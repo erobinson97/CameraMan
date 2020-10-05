@@ -18,14 +18,16 @@ if(grabbed):
     bbox = cv2.selectROI("Tracking", frame1, False)
     cv2.Tracker(frame1, bbox)
 
-
+# Starts the while loop if the first frame was captured
 while grabbed:
     timer = cv2.getTickCount()
 
+    # Grabs, decodes and returns the next video frame. Frame is stored in 'img'
     success, img = cap.read()
 
+    # Calculates fps
     fps = cv2.getTickFrequency()/(cv2.getTickCount() - timer)
-
+    # Puts the fps on the captured frame
     cv2.putText(img, str(fps), (75, 50), cv2.FONT_HERSHEY_COMPLEX, 0.7, (0,0,225),2)
 
     # Create a window and show the captured image
