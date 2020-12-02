@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+#include <string>
+#include <iostream>
 
 #include "dynamixel_sdk.h" // Uses Dynamixel SDK library
 
@@ -21,36 +23,36 @@
 #define DXL_ID_PAN 5   // Dynamixel ID: 5
 #define DXL_ID_TILT 10 // Dynamixel ID: 10
 #define BAUDRATE 57600
-#define DEVICENAME1 "/dev/ttyUSB0"
-#define DEVICENAME2 "/dev/ttyUSB0"
+#define PORT_PATH "/dev/ttyUSB0"
 
 #define TORQUE_ENABLE 1                // Value for enabling the torque
 #define TORQUE_DISABLE 0               // Value for disabling the torque
 #define DXL_MINIMUM_POSITION_VALUE 300 // Dynamixel will rotate between this value
 #define DXL_MAXIMUM_POSITION_VALUE 511 // and this value (note that the Dynamixel would not move when the position value is out of movable range. Check e-manual about the range of the Dynamixel you use.)
-#define DXL_MOVING_STATUS_THRESHOLD 3 // Dynamixel moving status threshold
+#define DXL_MOVING_STATUS_THRESHOLD 3  // Dynamixel moving status threshold
 
 #define ESC_ASCII_VALUE 0x1b
 
 // Initialize PortHandler instance
-// Set the port path
-// Get methods and members of PortHandlerLinux or PortHandlerWindows
-dynamixel::PortHandler *portHandler1 = dynamixel::PortHandler::getPortHandler(DEVICENAME1);
-dynamixel::PortHandler *portHandler2 = dynamixel::PortHandler::getPortHandler(DEVICENAME2);
+// Gives access and methods for handling port: /dev/ttyUSB0
+// Both devices use /dev/ttyUSB0 so we only need 1 port handler
+dynamixel::PortHandler *PORT_HANDLER = dynamixel::PortHandler::getPortHandler(PORT_PATH);
 
 // Initialize PacketHandler instance
 // Set the protocol version
-// Get methods and members of Protocol1PacketHandler or Protocol2PacketHandler
+// We are using Dynamixel AX-12's and they use PROTOCOL 1.0
 dynamixel::PacketHandler *packetHandler = dynamixel::PacketHandler::getPacketHandler(PROTOCOL_VERSION);
 
+// This is a signal handler that disables the servos and closes ports before exiting the program
 void clean_up(int)
 {
-    printf("Disabling Torque\n");
     int dxl_comm_result = COMM_TX_FAIL; // Communication result
     uint8_t dxl_error = 0;              // Dynamixel error
 
+    printf("Servo ID: %s -- [Disabling Torque!]\n", DXL_ID_PAN);
+
     // Disable Dynamixel Torque for Pan servo
-    dxl_comm_result = packetHandler->write1ByteTxRx(portHandler1, DXL_ID_PAN, ADDR_MX_TORQUE_ENABLE, TORQUE_DISABLE, &dxl_error);
+    dxl_comm_result = packetHandler->write1ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_TORQUE_ENABLE, TORQUE_DISABLE, &dxl_error);
     if (dxl_comm_result != COMM_SUCCESS)
     {
         printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
@@ -60,8 +62,10 @@ void clean_up(int)
         printf("%s\n", packetHandler->getRxPacketError(dxl_error));
     }
 
+    printf("Servo ID: %s -- [Disabling Torque!]\n", DXL_ID_TILT);
+
     // Disable Dynamixel Torque for Tilt servo
-    dxl_comm_result = packetHandler->write1ByteTxRx(portHandler2, DXL_ID_TILT, ADDR_MX_TORQUE_ENABLE, TORQUE_DISABLE, &dxl_error);
+    dxl_comm_result = packetHandler->write1ByteTxRx(PORT_HANDLER, DXL_ID_TILT, ADDR_MX_TORQUE_ENABLE, TORQUE_DISABLE, &dxl_error);
     if (dxl_comm_result != COMM_SUCCESS)
     {
         printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
@@ -72,9 +76,45 @@ void clean_up(int)
     }
 
     // Close ports
-    portHandler1->closePort();
-    portHandler2->closePort();
+    PORT_HANDLER->closePort();
     exit(1);
+}
+
+// Disables the PAN and TILT servos and closes ports
+int clean_up()
+{
+    int dxl_comm_result = COMM_TX_FAIL; // Communication result
+    uint8_t dxl_error = 0;              // Dynamixel error
+
+    printf("Servo ID: %s -- [Disabling Torque!]\n", DXL_ID_PAN);
+
+    // Disable Dynamixel Torque for Pan servo
+    dxl_comm_result = packetHandler->write1ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_TORQUE_ENABLE, TORQUE_DISABLE, &dxl_error);
+    if (dxl_comm_result != COMM_SUCCESS)
+    {
+        printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
+    }
+    else if (dxl_error != 0)
+    {
+        printf("%s\n", packetHandler->getRxPacketError(dxl_error));
+    }
+
+    printf("Servo ID: %s -- [Disabling Torque!]\n", DXL_ID_TILT);
+
+    // Disable Dynamixel Torque for Tilt servo
+    dxl_comm_result = packetHandler->write1ByteTxRx(PORT_HANDLER, DXL_ID_TILT, ADDR_MX_TORQUE_ENABLE, TORQUE_DISABLE, &dxl_error);
+    if (dxl_comm_result != COMM_SUCCESS)
+    {
+        printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
+    }
+    else if (dxl_error != 0)
+    {
+        printf("%s\n", packetHandler->getRxPacketError(dxl_error));
+    }
+
+    // Close ports
+    PORT_HANDLER->closePort();
+    return 0;
 }
 
 int getch()
@@ -117,8 +157,54 @@ int kbhit(void)
     return 0;
 }
 
+
+
+/* +30 would rotate clockwise 30 degrees, while -30 will rotate counter-clockwise 30 degrees.
+ *
+ * @param an integer representing the desired change in orientation relative to the servos current position. 
+ * @return true on success, fail otherwise
+ */
+bool relative_PAN(int degrees)
+{
+    // Error checking variables
+    uint8_t dxl_error = 0;                                                               // Dynamixel error
+    int dxl_comm_result = COMM_TX_FAIL;                                                  // Communication result
+
+    //Function converts relative degrees to a servo position
+
+
+    int goal_position;
+
+    
+
+    // Write goal position for PAN servo
+    dxl_comm_result = packetHandler->write2ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_GOAL_POSITION, goal_position, &dxl_error);
+
+    if (dxl_comm_result != COMM_SUCCESS)
+    {
+        printf("FAILED to write goal position for PAN servo. ID:%s\nERROR:\n", DXL_ID_PAN);
+        printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
+        return false;
+    }
+    else if (dxl_error != 0)
+    {
+        printf("FAILED to write goal position for PAN servo. ID:%s\nERROR:\n", DXL_ID_PAN);
+        printf("%s\n", packetHandler->getRxPacketError(dxl_error));
+        return false;
+    }
+    return true;
+}
+
+bool relative_TILT(int degrees)
+{
+
+    return false;
+    return true;
+}
+
 int main()
 {
+    // We need a signal handler for SIGINT, SIGHUP, and SIGTERM that disables the servos.
     struct sigaction exit_action;
     exit_action.sa_handler = clean_up;
     sigemptyset(&exit_action.sa_mask);
@@ -127,15 +213,15 @@ int main()
     sigaction(SIGHUP, &exit_action, nullptr);
     sigaction(SIGTERM, &exit_action, nullptr);
 
-    int index = 1;
+    int index = 0;
     int dxl_comm_result = COMM_TX_FAIL;                                                  // Communication result
     int dxl_goal_position[2] = {DXL_MINIMUM_POSITION_VALUE, DXL_MAXIMUM_POSITION_VALUE}; // Goal position
 
     uint8_t dxl_error = 0;             // Dynamixel error
     uint16_t dxl_present_position = 0; // Present position
 
-    // Open port for pan servo
-    if (portHandler1->openPort())
+    // Open port for BOTH servos
+    if (PORT_HANDLER->openPort())
     {
         printf("Succeeded to open the port!\n");
     }
@@ -147,21 +233,8 @@ int main()
         return 0;
     }
 
-    // Open port for tilt servo
-    if (portHandler2->openPort())
-    {
-        printf("Succeeded to open the port!\n");
-    }
-    else
-    {
-        printf("Failed to open the port!\n");
-        printf("Press any key to terminate...\n");
-        getch();
-        return 0;
-    }
-
-    // Set port1 baudrate for pan servo
-    if (portHandler1->setBaudRate(BAUDRATE))
+    // Set port baudrate for PAN servo
+    if (PORT_HANDLER->setBaudRate(BAUDRATE))
     {
         printf("Succeeded to change the baudrate!\n");
     }
@@ -173,36 +246,25 @@ int main()
         return 0;
     }
 
-    // Set port2 baudrate for tilt servo
-    if (portHandler2->setBaudRate(BAUDRATE))
-    {
-        printf("Succeeded to change the baudrate!\n");
-    }
-    else
-    {
-        printf("Failed to change the baudrate!\n");
-        printf("Press any key to terminate...\n");
-        getch();
-        return 0;
-    }
-
-    // Enable Torque for pan servo (port1)
-    dxl_comm_result = packetHandler->write1ByteTxRx(portHandler1, DXL_ID_PAN, ADDR_MX_TORQUE_ENABLE, TORQUE_ENABLE, &dxl_error);
+    // Enable Torque for PAN servo (port1)
+    dxl_comm_result = packetHandler->write1ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_TORQUE_ENABLE, TORQUE_ENABLE, &dxl_error);
     if (dxl_comm_result != COMM_SUCCESS)
     {
         printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
+        return clean_up();
     }
     else if (dxl_error != 0)
     {
         printf("%s\n", packetHandler->getRxPacketError(dxl_error));
+        return clean_up();
     }
     else
     {
-        printf("Dynamixel has been successfully connected \n");
+        printf("PAN servo has been successfully connected \n");
     }
 
-    // Enable Torque for tilt servo (port2)
-    dxl_comm_result = packetHandler->write1ByteTxRx(portHandler2, DXL_ID_PAN, ADDR_MX_TORQUE_ENABLE, TORQUE_ENABLE, &dxl_error);
+    // Enable Torque for TILT servo (port2)
+    dxl_comm_result = packetHandler->write1ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_TORQUE_ENABLE, TORQUE_ENABLE, &dxl_error);
     if (dxl_comm_result != COMM_SUCCESS)
     {
         printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
@@ -222,22 +284,28 @@ int main()
         if (getch() == ESC_ASCII_VALUE)
             break;
 
-        // Write goal position for pan servo
-        dxl_comm_result = packetHandler->write2ByteTxRx(portHandler1, DXL_ID_PAN, ADDR_MX_GOAL_POSITION, dxl_goal_position[index], &dxl_error);
+        // Write goal position for PAN servo
+        dxl_comm_result = packetHandler->write2ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_GOAL_POSITION, dxl_goal_position[index], &dxl_error);
         if (dxl_comm_result != COMM_SUCCESS)
         {
+            printf("FAILED to write goal position for PAN servo. ID:%s\nERROR:\n", DXL_ID_PAN);
             printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
-            break;
+            // Exit program gracefully
+            return clean_up();
         }
         else if (dxl_error != 0)
         {
+            printf("FAILED to write goal position for PAN servo. ID:%s\nERROR:\n", DXL_ID_PAN);
             printf("%s\n", packetHandler->getRxPacketError(dxl_error));
+            // Exit program gracefully
+            return clean_up();
         }
 
+        // Print present position for PAN servo while the servo is rotating towards its target position
         do
         {
-            // Read present position for pan servo
-            dxl_comm_result = packetHandler->read2ByteTxRx(portHandler1, DXL_ID_PAN, ADDR_MX_PRESENT_POSITION, &dxl_present_position, &dxl_error);
+            // Read present position for PAN servo
+            dxl_comm_result = packetHandler->read2ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_PRESENT_POSITION, &dxl_present_position, &dxl_error);
             if (dxl_comm_result != COMM_SUCCESS)
             {
                 printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
@@ -250,10 +318,11 @@ int main()
 
             printf("[ID:%03d] GoalPos:%03d  PresPos:%03d\n", DXL_ID_PAN, dxl_goal_position[index], dxl_present_position);
 
+            // While not at target position
         } while ((abs(dxl_goal_position[index] - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD));
 
         // Write goal position for Tilt servo
-        dxl_comm_result = packetHandler->write2ByteTxRx(portHandler2, DXL_ID_TILT, ADDR_MX_GOAL_POSITION, dxl_goal_position[index], &dxl_error);
+        dxl_comm_result = packetHandler->write2ByteTxRx(PORT_HANDLER, DXL_ID_TILT, ADDR_MX_GOAL_POSITION, dxl_goal_position[index], &dxl_error);
         if (dxl_comm_result != COMM_SUCCESS)
         {
             printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
@@ -264,10 +333,11 @@ int main()
             printf("%s\n", packetHandler->getRxPacketError(dxl_error));
         }
 
+        // Print present position for TILT servo while the servo is rotating towards its target position
         do
         {
-            // Read present position for tilt servo
-            dxl_comm_result = packetHandler->read2ByteTxRx(portHandler2, DXL_ID_TILT, ADDR_MX_PRESENT_POSITION, &dxl_present_position, &dxl_error);
+            // Read present position for TILT servo
+            dxl_comm_result = packetHandler->read2ByteTxRx(PORT_HANDLER, DXL_ID_TILT, ADDR_MX_PRESENT_POSITION, &dxl_present_position, &dxl_error);
             if (dxl_comm_result != COMM_SUCCESS)
             {
                 printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
@@ -293,30 +363,5 @@ int main()
         }
     }
 
-    // Disable Dynamixel Torque for Pan servo
-    dxl_comm_result = packetHandler->write1ByteTxRx(portHandler1, DXL_ID_PAN, ADDR_MX_TORQUE_ENABLE, TORQUE_DISABLE, &dxl_error);
-    if (dxl_comm_result != COMM_SUCCESS)
-    {
-        printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
-    }
-    else if (dxl_error != 0)
-    {
-        printf("%s\n", packetHandler->getRxPacketError(dxl_error));
-    }
-
-    // Disable Dynamixel Torque for Tilt servo
-    dxl_comm_result = packetHandler->write1ByteTxRx(portHandler2, DXL_ID_TILT, ADDR_MX_TORQUE_ENABLE, TORQUE_DISABLE, &dxl_error);
-    if (dxl_comm_result != COMM_SUCCESS)
-    {
-        printf("%s\n", packetHandler->getTxRxResult(dxl_comm_result));
-    }
-    else if (dxl_error != 0)
-    {
-        printf("%s\n", packetHandler->getRxPacketError(dxl_error));
-    }
-
-    // Close ports
-    portHandler1->closePort();
-    portHandler2->closePort();
-    return 0;
+    return clean_up();
 }
