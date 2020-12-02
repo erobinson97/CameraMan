@@ -185,43 +185,6 @@ int getPosition(int servo_id)
     return int(dxl_present_position);
 }
 
-bool return_home()
-{
-    cout << "Returning home..." << endl;
-    // Error checking variables
-    uint8_t dxl_error = 0;              // Dynamixel error
-    int dxl_comm_result = COMM_TX_FAIL; // Communication result
-
-    dxl_comm_result = PACKET_HANDLER->write2ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_GOAL_POSITION, 511, &dxl_error);
-    if (dxl_comm_result != COMM_SUCCESS)
-    {
-        cout << "FAILED to write goal position for PAN servo. ID:" << DXL_ID_PAN << endl;
-        printf("%s\n", PACKET_HANDLER->getTxRxResult(dxl_comm_result));
-        return false;
-    }
-    else if (dxl_error != 0)
-    {
-        cout << "FAILED to write goal position for PAN servo. ID:" << DXL_ID_PAN << endl;
-        printf("%s\n", PACKET_HANDLER->getRxPacketError(dxl_error));
-        return false;
-    }
-
-    dxl_comm_result = PACKET_HANDLER->write2ByteTxRx(PORT_HANDLER, DXL_ID_TILT, ADDR_MX_GOAL_POSITION, 511, &dxl_error);
-    if (dxl_comm_result != COMM_SUCCESS)
-    {
-        cout << "FAILED to write goal position for TILT servo. ID:" << DXL_ID_TILT << endl;
-        printf("%s\n", PACKET_HANDLER->getTxRxResult(dxl_comm_result));
-        return false;
-    }
-    else if (dxl_error != 0)
-    {
-        cout << "FAILED to write goal position for TILT servo. ID:" << DXL_ID_TILT << endl;
-        printf("%s\n", PACKET_HANDLER->getRxPacketError(dxl_error));
-        return false;
-    }
-    return true;
-}
-
 /* +30 would rotate clockwise 30 degrees, while -30 will rotate counter-clockwise 30 degrees.
  *
  * @param an integer representing the desired change in orientation relative to the servos current position. 
@@ -239,7 +202,7 @@ int relative_PAN(int PAN_degrees)
     // Convert from degrees to servo position unit
     int pos_diff = PAN_degrees / .29296875;
 
-    int goal_position = current_pos + pos_diff;
+    int goal_position = current_pos - pos_diff;
 
     // Write goal position for PAN servo
     if (goal_position <= DXL_PAN_MAXIMUM_POSITION_VALUE && goal_position >= DXL_PAN_MINIMUM_POSITION_VALUE)
@@ -267,6 +230,11 @@ int relative_PAN(int PAN_degrees)
     return goal_position;
 }
 
+/* +30 would rotate clockwise 30 degrees, while -30 will rotate counter-clockwise 30 degrees.
+ *
+ * @param an integer representing the desired change in orientation relative to the servos current position. 
+ * @return returns goal position upon success, and -1 on failure
+ */
 int relative_TILT(int TILT_degrees)
 {
     // Error checking variables
@@ -279,7 +247,7 @@ int relative_TILT(int TILT_degrees)
     // Convert from degrees to servo position unit
     int pos_diff = TILT_degrees / .29296875;
 
-    int goal_position = current_pos + pos_diff;
+    int goal_position = current_pos - pos_diff;
 
     // Write goal position for PAN servo
     if (goal_position <= DXL_TILT_MAXIMUM_POSITION_VALUE && goal_position >= DXL_TILT_MINIMUM_POSITION_VALUE)
@@ -307,6 +275,71 @@ int relative_TILT(int TILT_degrees)
     return goal_position;
 }
 
+void WAIT_for_goal(int servo_ID, int goal_position)
+{
+    if (goal_position < 0)
+    {
+        cout << "Relative pan or tilt failed!" << endl;
+        return;
+    }
+    int current_position;
+    do
+    {
+        current_position = getPosition(servo_ID);
+        if (current_position > 0)
+        {
+            cout << "ID: " << servo_ID << " Current position: " << current_position << " Goal position: " << goal_position << endl;
+        }
+        else
+        {
+            cout << "Error in WAIT_for_goal. getPosition(int) failed" << endl;
+        }
+
+    } while ((abs(goal_position - current_position) > DXL_MOVING_STATUS_THRESHOLD));
+}
+
+bool return_home()
+{
+    cout << "Returning home..." << endl;
+    // Error checking variables
+    uint8_t dxl_error = 0;              // Dynamixel error
+    int dxl_comm_result = COMM_TX_FAIL; // Communication result
+
+    dxl_comm_result = PACKET_HANDLER->write2ByteTxRx(PORT_HANDLER, DXL_ID_PAN, ADDR_MX_GOAL_POSITION, 511, &dxl_error);
+    if (dxl_comm_result != COMM_SUCCESS)
+    {
+        cout << "FAILED to write goal position for PAN servo. ID:" << DXL_ID_PAN << endl;
+        printf("%s\n", PACKET_HANDLER->getTxRxResult(dxl_comm_result));
+        return false;
+    }
+    else if (dxl_error != 0)
+    {
+        cout << "FAILED to write goal position for PAN servo. ID:" << DXL_ID_PAN << endl;
+        printf("%s\n", PACKET_HANDLER->getRxPacketError(dxl_error));
+        return false;
+    }
+
+    WAIT_for_goal(DXL_ID_PAN, 511);
+
+    dxl_comm_result = PACKET_HANDLER->write2ByteTxRx(PORT_HANDLER, DXL_ID_TILT, ADDR_MX_GOAL_POSITION, 511, &dxl_error);
+    if (dxl_comm_result != COMM_SUCCESS)
+    {
+        cout << "FAILED to write goal position for TILT servo. ID:" << DXL_ID_TILT << endl;
+        printf("%s\n", PACKET_HANDLER->getTxRxResult(dxl_comm_result));
+        return false;
+    }
+    else if (dxl_error != 0)
+    {
+        cout << "FAILED to write goal position for TILT servo. ID:" << DXL_ID_TILT << endl;
+        printf("%s\n", PACKET_HANDLER->getRxPacketError(dxl_error));
+        return false;
+    }
+    
+    WAIT_for_goal(DXL_ID_TILT, 511);
+
+    return true;
+}
+
 int main()
 {
     // We need a signal handler for SIGINT, SIGHUP, and SIGTERM that disables the servos.
@@ -320,11 +353,7 @@ int main()
 
     int dxl_comm_result = COMM_TX_FAIL; // Communication result
 
-    uint8_t dxl_error = 0;             // Dynamixel error
-    uint16_t dxl_present_position = 0; // Present position
-
-    int goal_position;
-    int rotation;
+    uint8_t dxl_error = 0; // Dynamixel error
 
     // Open port for BOTH servos
     if (PORT_HANDLER->openPort())
@@ -388,68 +417,18 @@ int main()
     {
         return clean_up();
     }
-    cout << "Rotation ammount: " << endl;
-    cin >> rotation;
 
-    while (1)
-    {
-        printf("Press any key to continue! (or press ESC to quit!)\n");
-        if (getch() == ESC_ASCII_VALUE)
-            break;
+    WAIT_for_goal(DXL_ID_PAN, relative_PAN(-90));
+    WAIT_for_goal(DXL_ID_TILT, relative_TILT(30));
+    WAIT_for_goal(DXL_ID_TILT, relative_TILT(-60));
 
-        // Write goal position for PAN servo
-        goal_position = relative_PAN(rotation);
-        if (goal_position < 0)
-        {
-            return_home();
-            cout << "Rotation ammount: " << endl;
-            cin >> rotation;
-            continue;
-        }
+    return_home();
 
-        // Print present position for PAN servo while the servo is rotating towards its target position
-        do
-        {
-            // Read present position for PAN servo
-            dxl_present_position = getPosition(DXL_ID_PAN);
-            if (dxl_present_position > 0)
-            {
-                printf("[ID:%03d] GoalPos:%03d  PresPos:%03d\n", DXL_ID_PAN, goal_position, dxl_present_position);
-            }
-            else
-            {
-                break;
-            }
+    WAIT_for_goal(DXL_ID_PAN, relative_PAN(90));
+    WAIT_for_goal(DXL_ID_TILT, relative_TILT(30));
+    WAIT_for_goal(DXL_ID_TILT, relative_TILT(-60));
 
-            // While not at target position
-        } while ((abs(goal_position - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD));
-
-        // Write goal position for Tilt servo
-        goal_position = relative_TILT(rotation);
-        if (goal_position < 0)
-        {
-            return_home();
-            cout << "Rotation ammount: " << endl;
-            cin >> rotation;
-            continue;
-        }
-
-        // Print present position for TILT servo while the servo is rotating towards its target position
-        do
-        {
-            // Read present position for TILT servo
-            dxl_present_position = getPosition(DXL_ID_TILT);
-            if (dxl_present_position > 0)
-            {
-                printf("[ID:%03d] GoalPos:%03d  PresPos:%03d\n", DXL_ID_TILT, goal_position, dxl_present_position);
-            }
-            else
-            {
-                break;
-            }
-
-        } while ((abs(goal_position - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD));
-    }
+    return_home();
 
     return clean_up();
 }
