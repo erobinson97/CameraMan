@@ -373,7 +373,7 @@ int main()
         return 0;
     }
 
-    // Set port baudrate for PAN servo
+    // Set port baudrate for servos
     if (PORT_HANDLER->setBaudRate(BAUDRATE))
     {
         printf("Succeeded to change the baudrate!\n");
