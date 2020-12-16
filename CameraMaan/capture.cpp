@@ -34,7 +34,7 @@ void *ControllServos(void *threadid)
 
         cerr << "Failed to create DxlController object." << endl;
         cerr << "ErrOut: " << e.what() << "." << endl;
-        cout << "Exiting thread" << endl;
+        cout << "Exiting DxlController thread" << endl;
         pthread_exit(NULL);
     }
 
@@ -50,6 +50,7 @@ void *ControllServos(void *threadid)
 
     controller.return_home();
 
+    printf("Exiting DxlController thread\n");
     pthread_exit(NULL);
 }
 
@@ -79,7 +80,7 @@ void *Track(void *threadid)
             Mat frame = (Mat)buff;
             imshow("TrackerFrames", frame);
         }
-    }while(bytes_read >= 0);
+    } while (bytes_read >= 0);
 
     pthread_exit(NULL);
 }
@@ -106,6 +107,7 @@ void *Capture(void *threadid)
     if (mq < 0)
     {
         fprintf(stderr, "[CAPTURE]: Error, cannot open the queue: %s.\n", strerror(errno));
+        printf("Exiting capture thread");
         pthread_exit(NULL);
     }
 
@@ -115,15 +117,13 @@ void *Capture(void *threadid)
     buff = &frame;
     mq_send(mq, buff, sizeof(Mat), prio);
 
-
+    printf("Exiting capture thread");
     pthread_exit(NULL);
 }
 
 int main(int argc, char **argv[])
 {
     // Setup signal handlers
-
-    // Set up message queue between capture and tracking threads
 
     // Set up threads
     int errorCheck;
@@ -162,5 +162,8 @@ int main(int argc, char **argv[])
         exit(-1);
     }
 
+    pthread_join(thread_Capture, nullptr);
+    pthread_join(thread_Tracker, nullptr);
+    pthread_join(thread_Controller, nullptr);
     return 0;
 }

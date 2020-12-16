@@ -5,7 +5,7 @@ CC=g++
 CDEFS=
 CFLAGS= -O0 -g $(INCLUDE_DIRS) $(CDEFS)
 LIBS= -lrt
-CPPLIBS= -L/usr/lib -lopencv_core -lopencv_flann -lopencv_video
+CPPLIBS= -L/usr/local/lib -lopencv_core -lopencv_flann -lopencv_video
 
 HFILES= 
 CFILES= 
@@ -19,6 +19,7 @@ all:	capture
 clean:
 	-rm -f *.o *.d
 	-rm -f capture
+	-rm -f video.vmw
 
 distclean:
 	-rm -f *.o *.d

@@ -35,7 +35,7 @@
 
 #define DXL_MOVING_STATUS_THRESHOLD 3 // Dynamixel moving status threshold
 
-#define MOVE_SPEED 0
+#define MOVE_SPEED 50
 
 #define ESC_ASCII_VALUE 0x1b
 
@@ -373,7 +373,7 @@ int main()
         return 0;
     }
 
-    // Set port baudrate for servos
+    // Set port baudrate for PAN servo
     if (PORT_HANDLER->setBaudRate(BAUDRATE))
     {
         printf("Succeeded to change the baudrate!\n");
