@@ -46,7 +46,7 @@ void *ControllServos(void *threadid)
     {
         cerr << "Failed to create DxlController object." << endl;
         cerr << "ErrOut: " << e.what() << "." << endl;
-        cout << "Exiting DxlController thread" << endl;
+        std::cout << "Exiting DxlController thread" << endl;
 
         controller->clean_up();
         pthread_exit(NULL);
@@ -64,7 +64,7 @@ void *ControllServos(void *threadid)
 
     controller->return_home();
 
-    printf("Exiting DxlController thread\n");
+    std::printf("Exiting DxlController thread\n");
     pthread_exit(NULL);
 }
 
@@ -72,12 +72,9 @@ void *ControllServos(void *threadid)
 void *Track(void *threadid)
 {
     TRACKER_RUNNING = true;
-    Ptr<Tracker> tracker = TrackerCSRT::create();
     bool object_defined = false;
-    Rect2d obj_position;
-    bool tracking = false;
-
-    //Open the message queue
+    Ptr<Tracker> tracker = TrackerCSRT::create();
+    //Just run imshow for now
     mqd_t mq;
     do
     {
@@ -89,7 +86,7 @@ void *Track(void *threadid)
         }
     } while (mq == -1 || CAPTURE_RUNNING == false);
 
-    printf("[TRACKER]: capture_queue opened\n");
+    std::printf("[TRACKER]: capture_queue opened\n");
     Mat *frame;
     ssize_t bytes_read;
 
@@ -97,48 +94,54 @@ void *Track(void *threadid)
     {
         bytes_read = mq_receive(mq, (char *)&frame, sizeof(Mat *), NULL);
 
-        printf("[TRACKER]: Recieved %d bytes.\n", bytes_read);
+        std::printf("[TRACKER]: Recieved %d bytes.\n", bytes_read);
 
-        if (bytes_read == sizeof(Mat *) && !(frame->empty()))
+        while (!object_defined)
         {
-            if (!object_defined)
+            if (bytes_read == sizeof(Mat *) && !(frame->empty()))
             {
                 imshow("CaptureFrames", *frame);
-                if (waitKey(20) != -1)
+                waitKey(20);
+
+                if (waitKey(1) == 27)
                 {
-                    tracker->init(*frame, selectROI("CaptureFrames", *frame, true, false));
+                    tracker->init(*frame, selectROI(*frame, true, false));
                     object_defined = true;
                 }
+
+                delete frame;
             }
             else
             {
-                tracking = tracker->update(*frame, obj_position);
-                if (!tracking)
-                {
-                    putText(*frame, "Tracking failure detected", Point(100, 80), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0, 0, 255), 2);
-                }
-                cout << "Object x = " << obj_position.x << " y = " << obj_position.y << endl;
-
-                //Draw rectangle on tracked object
-                rectangle(*frame, obj_position, Scalar(255, 0, 0), 2, 1);
-
-                imshow("CaptureFrames", *frame);
-                waitKey(20);
+                std::printf("WARNING!!!   [TRACKER]: Recieved %d bytes and it's not the Mat.\n", bytes_read);
             }
         }
-        delete frame;
+
+        Rect2d obj_position;
+
+        if (bytes_read == sizeof(Mat *))
+        {
+            tracker->update(*frame, obj_position);
+            std::cout << "Object x = " << obj_position.x << " y = " << obj_position.y << endl;
+            imshow("CaptureFrames", *frame);
+            waitKey(20);
+
+            delete frame;
+        }
+        else
+        {
+            std::printf("WARNING!!!   [TRACKER]: Recieved %d bytes.\n", bytes_read);
+        }
 
     } while (CAPTURE_RUNNING);
 
-    //Delete message queue
     if (!CAPTURE_RUNNING)
     {
         mq_close(mq);
         mq_unlink(CAPTURE_QUEUE_NAME);
     }
     TRACKER_RUNNING = false;
-
-    printf("Exiting tracker thread\n");
+    std::printf("Exiting tracker thread\n");
     pthread_exit(NULL);
 }
 
@@ -166,16 +169,16 @@ void *Capture(void *threadid)
     if (mq < 0)
     {
         fprintf(stderr, "[CAPTURE]: Error, cannot open the queue: %s.\n", strerror(errno));
-        printf("Exiting capture thread");
+        std::printf("Exiting capture thread");
         pthread_exit(NULL);
     }
 
-    printf("[CAPTURE]: Created message queue!\n");
+    std::printf("[CAPTURE]: Created message queue!\n");
 
     Mat frame;
     Mat *heap_frame;
 
-    //Send rames while capture is
+    //Send rames while capture is opened
     while (capture.isOpened())
     {
         capture >> frame;
@@ -190,7 +193,7 @@ void *Capture(void *threadid)
         mq_unlink(CAPTURE_QUEUE_NAME);
     }
     CAPTURE_RUNNING = false;
-    printf("Exiting capture thread");
+    std::printf("Exiting capture thread");
     pthread_exit(NULL);
 }
 
@@ -218,23 +221,23 @@ int main(int argc, char *argv[])
 */
 
     // Create tracker thread
-    cout << "Creating tracker thread" << endl;
+    std::cout << "Creating tracker thread" << endl;
     errorCheck = pthread_create(&thread_Tracker, NULL, Track, (void *)tempID);
     if (errorCheck)
     {
         cerr << "Unable to create thread[" << tempID << "], " << errorCheck << endl;
-        cout << "Exiting..." << endl;
+        std::cout << "Exiting..." << endl;
         exit(-1);
     }
     tempID++;
 
     // Create capture thread
-    cout << "Creating capture thread" << endl;
+    std::cout << "Creating capture thread" << endl;
     errorCheck = pthread_create(&thread_Capture, NULL, Capture, (void *)tempID);
     if (errorCheck)
     {
         cerr << "Unable to create thread[" << tempID << "], " << errorCheck << endl;
-        cout << "Exiting..." << endl;
+        std::cout << "Exiting..." << endl;
         exit(-1);
     }
 
