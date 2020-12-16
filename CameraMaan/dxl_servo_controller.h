@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <string>
 #include <iostream>
+#include <exception>
 
 // Control table address
 #define ADDR_MX_TORQUE_ENABLE 24 // Control table address is different in Dynamixel model

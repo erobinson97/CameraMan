@@ -1,5 +1,4 @@
 #include "dxl_servo_controller.h"
-#include <exception.h>
 
 void DxlController::clean_up()
 {
@@ -93,7 +92,7 @@ DxlController::DxlController()
     }
     else
     {
-        printf("Dynamixel has been successfully connected \n");
+        printf("TILT servo has been successfully connected \n");
     }
 
     //Change PAN moving speed
@@ -125,10 +124,13 @@ DxlController::DxlController()
     {
         printf("TILT Dynamixel speed has been changed \n");
     }
+
+    printf("DxlController object has been created\n");
 }
 
 DxlController::~DxlController()
 {
+    printf("DxlController destructor is being called\n");
     clean_up();
 }
 
