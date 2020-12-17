@@ -33,11 +33,13 @@ using namespace cv;
 
 bool CAPTURE_RUNNING = false;
 bool TRACKER_RUNNING = false;
+bool CONTROLLER_RUNNING = false;
 
 // Servo controller thread
 void *ControllServos(void *threadid)
 {
     optional<DxlController> controller;
+    CONTROLLER_RUNNING = true;
     try
     {
         controller.emplace();
@@ -51,18 +53,49 @@ void *ControllServos(void *threadid)
         controller->clean_up();
         pthread_exit(NULL);
     }
-
-    controller->WAIT_for_goal(DXL_ID_PAN, controller->relative_PAN(-90));
-    controller->WAIT_for_goal(DXL_ID_TILT, controller->relative_TILT(30));
-    controller->WAIT_for_goal(DXL_ID_TILT, controller->relative_TILT(-60));
-
+    Point *position;
+    
     controller->return_home();
 
-    controller->WAIT_for_goal(DXL_ID_PAN, controller->relative_PAN(90));
-    controller->WAIT_for_goal(DXL_ID_TILT, controller->relative_TILT(30));
-    controller->WAIT_for_goal(DXL_ID_TILT, controller->relative_TILT(-60));
+    mqd_t mq;
+    do
+    {
+        mq = mq_open(SERVO_QUEUE_NAME, O_RDONLY);
+        if (mq < 0)
+        {
+            fprintf(stderr, "[CONTROLLER]: Error, cannot open the capture queue: %s.\n", strerror(errno));
+            sleep(1);
+        }
 
-    controller->return_home();
+    } while (mq == -1 || !TRACKER_RUNNING);
+    printf("[CONTROLLER]: servo queue opened\n");
+    ssize_t bytes_read;
+    printf("[CONTROLLER]: Waiting for instructions...\n");
+    int panDegrees;
+    do
+    {
+        bytes_read = mq_receive(mq, (char *)&position, sizeof(Point *), NULL);
+        if (bytes_read == sizeof(Point *))
+        {
+            cout << "[CONTROLLER]: x = " << position->x << " y = " << position->y << endl;
+
+            if (position->x > 640) //Turn right
+            {
+                panDegrees = (position->x - 640) / 32.5;
+                panDegrees = panDegrees/2;
+                cout << "position:x = " << position->x << ". panDegrees = " << panDegrees << endl;
+                controller->WAIT_for_goal(DXL_ID_PAN, controller->relative_PAN(panDegrees));
+            }
+            else
+            {
+                panDegrees = (640 - position->x) / 32.5;
+                panDegrees = panDegrees/2;
+                cout << "position:x = " << position->x << ". panDegrees = " << -panDegrees << endl;
+                controller->WAIT_for_goal(DXL_ID_PAN, controller->relative_PAN(-panDegrees));
+            }
+        }
+        delete position;
+    } while (TRACKER_RUNNING);
 
     printf("Exiting DxlController thread\n");
     pthread_exit(NULL);
@@ -75,16 +108,37 @@ void *Track(void *threadid)
     Ptr<Tracker> tracker = TrackerCSRT::create();
     bool object_defined = false;
     Rect2d obj_position;
+    Rect2d prev_position;
+    Point *position;
     bool tracking = false;
 
-    //Open the message queue
+    // Create message queue between tracker and controller
+    struct mq_attr attr;
+    attr.mq_flags = 0;
+    attr.mq_maxmsg = 8;
+    attr.mq_msgsize = sizeof(Point *);
+    attr.mq_curmsgs = 0;
+
+    mqd_t mq_controller;
+    do
+    {
+        mq_controller = mq_open(SERVO_QUEUE_NAME, (O_WRONLY | O_CREAT), (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH), &attr);
+        if (mq_controller < 0)
+        {
+            fprintf(stderr, "[TRACKER]: Error, cannot open the controller queue: %s.\n", strerror(errno));
+            sleep(1);
+        }
+    } while (mq_controller == -1 || !CONTROLLER_RUNNING);
+    printf("[TRACKER]: servo queue opened\n");
+
+    //Open the message queue between tracker and capture threads
     mqd_t mq;
     do
     {
         mq = mq_open(CAPTURE_QUEUE_NAME, O_RDONLY);
         if (mq < 0)
         {
-            fprintf(stderr, "[TRACKER]: Error, cannot open the queue: %s.\n", strerror(errno));
+            fprintf(stderr, "[TRACKER]: Error, cannot open the capture queue: %s.\n", strerror(errno));
             sleep(1);
         }
     } while (mq == -1 || CAPTURE_RUNNING == false);
@@ -97,7 +151,6 @@ void *Track(void *threadid)
     {
         bytes_read = mq_receive(mq, (char *)&frame, sizeof(Mat *), NULL);
 
-        printf("[TRACKER]: Recieved %d bytes.\n", bytes_read);
 
         if (bytes_read == sizeof(Mat *) && !(frame->empty()))
         {
@@ -108,6 +161,7 @@ void *Track(void *threadid)
                 {
                     tracker->init(*frame, selectROI("CaptureFrames", *frame, true, false));
                     object_defined = true;
+                    destroyAllWindows();
                 }
             }
             else
@@ -116,14 +170,22 @@ void *Track(void *threadid)
                 if (!tracking)
                 {
                     putText(*frame, "Tracking failure detected", Point(100, 80), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0, 0, 255), 2);
+                    cout << "Trackinf failure" << endl;
                 }
-                cout << "Object x = " << obj_position.x << " y = " << obj_position.y << endl;
+                position = new Point(obj_position.x, obj_position.y);
+                //rectangle(*frame, obj_position, Scalar(255, 0, 0), 2, 1);
+                //imshow("CaptureFrames", *frame);
+                //waitKey(10);
 
-                //Draw rectangle on tracked object
-                rectangle(*frame, obj_position, Scalar(255, 0, 0), 2, 1);
+                //Send obj_position.x and obj_position.y to DxlController thread
 
-                imshow("CaptureFrames", *frame);
-                waitKey(20);
+                //Don't send if position isn't very different
+                if (abs(obj_position.x - prev_position.x) > 40)
+                {
+                    mq_send(mq_controller, (const char *)&position, sizeof(Point *), NULL);
+                }
+
+                prev_position = obj_position;
             }
         }
         delete frame;
@@ -179,7 +241,7 @@ void *Capture(void *threadid)
     while (capture.isOpened())
     {
         capture >> frame;
-        resize(frame, frame, Size(1024, 800));
+        resize(frame, frame, Size(1280, 720));
         heap_frame = new Mat(frame);
         mq_send(mq, (const char *)&heap_frame, sizeof(Mat *), prio);
     }
@@ -204,7 +266,6 @@ int main(int argc, char *argv[])
     int tempID = 0; // Temporary variable for thread id
     pthread_t thread_Controller, thread_Tracker, thread_Capture;
 
-    /*
     // Create controller thread
     cout << "Creating controller thread" << endl;
     errorCheck = pthread_create(&thread_Controller, NULL, ControllServos, (void *)tempID);
@@ -215,7 +276,6 @@ int main(int argc, char *argv[])
         exit(-1);
     }
     tempID++;
-*/
 
     // Create tracker thread
     cout << "Creating tracker thread" << endl;
@@ -240,6 +300,6 @@ int main(int argc, char *argv[])
 
     pthread_join(thread_Capture, nullptr);
     pthread_join(thread_Tracker, nullptr);
-    //pthread_join(thread_Controller, nullptr);
+    pthread_join(thread_Controller, nullptr);
     return 0;
 }

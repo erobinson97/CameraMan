@@ -40,9 +40,9 @@
 #define DXL_TILT_MINIMUM_POSITION_VALUE 200
 #define DXL_TILT_MAXIMUM_POSITION_VALUE 720
 
-#define DXL_MOVING_STATUS_THRESHOLD 3 // Dynamixel moving status threshold
+#define DXL_MOVING_STATUS_THRESHOLD 30 // Dynamixel moving status threshold
 
-#define MOVE_SPEED 0
+#define MOVE_SPEED 30 //0 to 1023
 
 #define ESC_ASCII_VALUE 0x1b
 
