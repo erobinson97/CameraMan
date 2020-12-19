@@ -54,7 +54,7 @@ void *ControllServos(void *threadid)
         pthread_exit(NULL);
     }
     Point *position;
-    
+
     controller->return_home();
 
     mqd_t mq;
@@ -72,6 +72,7 @@ void *ControllServos(void *threadid)
     ssize_t bytes_read;
     printf("[CONTROLLER]: Waiting for instructions...\n");
     int panDegrees;
+    int tiltDegrees;
     do
     {
         bytes_read = mq_receive(mq, (char *)&position, sizeof(Point *), NULL);
@@ -79,21 +80,39 @@ void *ControllServos(void *threadid)
         {
             cout << "[CONTROLLER]: x = " << position->x << " y = " << position->y << endl;
 
-            if (position->x > 640) //Turn right
+            //Pan
+            if (position->x > 640)
             {
                 panDegrees = (position->x - 640) / 32.5;
-                panDegrees = panDegrees/2;
+                panDegrees = panDegrees / 2;
                 cout << "position:x = " << position->x << ". panDegrees = " << panDegrees << endl;
                 controller->WAIT_for_goal(DXL_ID_PAN, controller->relative_PAN(panDegrees));
             }
             else
             {
                 panDegrees = (640 - position->x) / 32.5;
-                panDegrees = panDegrees/2;
+                panDegrees = panDegrees / 2;
                 cout << "position:x = " << position->x << ". panDegrees = " << -panDegrees << endl;
                 controller->WAIT_for_goal(DXL_ID_PAN, controller->relative_PAN(-panDegrees));
             }
+
+            //Tilt
+            if (position->y > 360)
+            {
+                tiltDegrees = (360 - position->y) / 20;
+                tiltDegrees = tiltDegrees / 3;
+                cout << "position:y = " << position->y << ". tiltDegrees = " << tiltDegrees << endl;
+                controller->WAIT_for_goal(DXL_ID_TILT, controller->relative_TILT(tiltDegrees));
+            }
+            else
+            {
+                tiltDegrees = (position->y - 360) / 20;
+                tiltDegrees = tiltDegrees / 3;
+                cout << "position:y = " << position->y << ". tiltDegrees = " << -tiltDegrees << endl;
+                controller->WAIT_for_goal(DXL_ID_TILT, controller->relative_TILT(-tiltDegrees));
+            }
         }
+
         delete position;
     } while (TRACKER_RUNNING);
 
@@ -151,7 +170,6 @@ void *Track(void *threadid)
     {
         bytes_read = mq_receive(mq, (char *)&frame, sizeof(Mat *), NULL);
 
-
         if (bytes_read == sizeof(Mat *) && !(frame->empty()))
         {
             if (!object_defined)
@@ -170,7 +188,7 @@ void *Track(void *threadid)
                 if (!tracking)
                 {
                     putText(*frame, "Tracking failure detected", Point(100, 80), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0, 0, 255), 2);
-                    cout << "Trackinf failure" << endl;
+                    cout << "Tracking failure" << endl;
                 }
                 position = new Point(obj_position.x, obj_position.y);
                 //rectangle(*frame, obj_position, Scalar(255, 0, 0), 2, 1);
@@ -180,7 +198,7 @@ void *Track(void *threadid)
                 //Send obj_position.x and obj_position.y to DxlController thread
 
                 //Don't send if position isn't very different
-                if (abs(obj_position.x - prev_position.x) > 40)
+                if (abs(obj_position.x - prev_position.x) > 10 || abs(obj_position.y - prev_position.y) > 10 || abs(obj_position.x - 640) > 10 || abs(obj_position.y - 360) > 10)
                 {
                     mq_send(mq_controller, (const char *)&position, sizeof(Point *), NULL);
                 }
@@ -209,6 +227,7 @@ void *Capture(void *threadid)
 {
     CAPTURE_RUNNING = true;
     VideoCapture capture(0);
+    capture.set(cv::CAP_PROP_EXPOSURE, 4);
     if (!capture.isOpened())
     {
         cerr << "Error opening video!" << endl;

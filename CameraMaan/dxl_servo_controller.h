@@ -42,7 +42,7 @@
 
 #define DXL_MOVING_STATUS_THRESHOLD 30 // Dynamixel moving status threshold
 
-#define MOVE_SPEED 30 //0 to 1023
+#define MOVE_SPEED 10 //0 to 1023
 
 #define ESC_ASCII_VALUE 0x1b
 
